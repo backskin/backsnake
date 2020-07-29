@@ -10,6 +10,7 @@ use piston::input::*;
 use opengl_graphics::{GlGraphics, OpenGL};
 use std::collections::LinkedList;
 use rand::Rng;
+use crate::Direction::{Right, Down, Up, Left};
 
 #[derive(PartialEq, Copy, Clone)]
 enum Direction {
@@ -238,7 +239,7 @@ impl Renderer {
             let snack_circle = graphics::ellipse::circle(
                 (snack.pos_x * sq_size + half_size) as f64,
                 (snack.pos_y * sq_size + half_size) as f64,
-                half_size as f64,
+                0.5 * half_size as f64,
             );
 
             self.gl.draw(arg.viewport(), |c, gl| {
@@ -259,7 +260,85 @@ impl Renderer {
         let mut last_direction = game.snake.dir;
 
         for body_segment in &game.snake.body {
-            match body_segment {
+
+            if last_direction == *body_segment {
+
+                let mut x_start = (segment_pos_x * game.square_size) as f64;
+                let mut y_start = (segment_pos_y * game.square_size) as f64;
+                let mut x_end = x_start + game.square_size as f64;
+                let mut y_end = y_start + game.square_size as f64;
+
+                match body_segment {
+                    Right | Left => {
+                        y_start += 0.25 * game.square_size as f64;
+                        y_end -= 0.25 * game.square_size as f64;
+                    },
+                    Up | Down => {
+                        x_start += 0.25 * game.square_size as f64;
+                        x_end -= 0.25 * game.square_size as f64;
+                    },
+                };
+
+                let segment_square = graphics::rectangle::rectangle_by_corners(
+                    x_start, y_start, x_end, y_end);
+
+                self.gl.draw(arg.viewport(), |c, gl| {
+                    graphics::rectangle(game.snake.color.into(), segment_square, c.transform, gl);
+                });
+
+            } else {
+                let mut segm_square_x = (segment_pos_x * game.square_size) as f64;
+                let mut segm_square_y = (segment_pos_y * game.square_size) as f64;
+
+                let mut segm_start = 0.5 * std::f64::consts::PI;
+
+                if (last_direction == Down && *body_segment == Right) ||
+                    (last_direction == Left && *body_segment == Up) {
+
+                    segm_start = 1.5 * std::f64::consts::PI;
+                    segm_square_x -= 0.5 * game.square_size as f64;
+                    segm_square_y += 0.5 * game.square_size as f64;
+
+                } else if (last_direction == Right && *body_segment == Up) ||
+                    (last_direction == Down && *body_segment == Left){
+
+                    segm_start = std::f64::consts::PI;
+                    segm_square_x += 0.5 * game.square_size as f64;
+                    segm_square_y += 0.5 * game.square_size as f64;
+
+                } else if (last_direction == Left && *body_segment == Down) ||
+                    (last_direction == Up && *body_segment == Right){
+
+                    segm_start = 0.0_f64;
+                    segm_square_x -= 0.5 * game.square_size as f64;
+                    segm_square_y -= 0.5 * game.square_size as f64;
+
+                } else {
+                    segm_square_x += 0.5 * game.square_size as f64;
+                    segm_square_y -= 0.5 * game.square_size as f64;
+                };
+
+                let segm_end = segm_start + 0.5 * std::f64::consts::PI;
+                let segment_square = graphics::rectangle::square(
+                    segm_square_x,
+                    segm_square_y,
+                    game.square_size as f64,
+                );
+
+                self.gl.draw(arg.viewport(), |c, gl| {
+                    graphics::circle_arc(
+                        game.snake.color.into(), 0.25 * <f64>::from(game.square_size),
+                        segm_start,
+                        segm_end,
+                        segment_square,
+                        c.transform,
+                        gl)
+                });
+
+                last_direction = *body_segment;
+            }
+
+            match *body_segment {
                 Direction::Right => {
                     segment_pos_x = (segment_pos_x - 1 + game.field_width) % game.field_width;
                 },
@@ -272,69 +351,53 @@ impl Renderer {
                 Direction::Down => {
                     segment_pos_y = (segment_pos_y - 1 + game.field_height) % game.field_height;
                 },
-            }
+            };
 
-            if segment_pos_x == game.snake.pos_x
-                && segment_pos_y == game.snake.pos_y {
+            if segment_pos_x == game.snake.pos_x && segment_pos_y == game.snake.pos_y {
                 reset_game = true;
                 break;
             }
-
-            if last_direction == *body_segment {
-                let segment_square = graphics::rectangle::square(
-                    (segment_pos_x * game.square_size) as f64,
-                    (segment_pos_y * game.square_size) as f64,
-                    game.square_size as f64,
-                );
-
-                self.gl.draw(arg.viewport(), |c, gl| {
-                    graphics::rectangle(game.snake.color.into(), segment_square, c.transform, gl);
-                });
-            } else {
-
-
-                let mut segm_arc_x = (segment_pos_x * game.square_size) as f64;
-                let mut segm_arc_y = (segment_pos_y * game.square_size) as f64;
-                let mut segm_start = 0.0;
-                let mut segm_end = 0.0;
-
-
-            }
         }
 
-        self.gl.draw(arg.viewport(), |c, gl| {
-            graphics::rectangle(game.snake.color.into(),
-                                graphics::rectangle::square(
-                                    (game.snake.pos_x * game.square_size) as f64,
-                                    (game.snake.pos_y * game.square_size) as f64,
-                                    game.square_size as f64,
-                                ),
-                                c.transform, gl);
-        });
+        let mut x_start = (game.snake.pos_x * game.square_size) as f64;
+        let mut y_start = (game.snake.pos_y * game.square_size) as f64;
+        let mut x_end = x_start + game.square_size as f64;
+        let mut y_end = y_start + game.square_size as f64;
+
+        match game.snake.dir {
+            Right | Left => {
+                y_start += 0.25 * game.square_size as f64;
+                y_end -= 0.25 * game.square_size as f64;
+            },
+            Up | Down => {
+                x_start += 0.25 * game.square_size as f64;
+                x_end -= 0.25 * game.square_size as f64;
+            },
+        };
 
         let mut head_x = (game.snake.pos_x * game.square_size) as f64;
         let mut head_y = (game.snake.pos_y * game.square_size) as f64;
         {
             match game.snake.dir{
-                Direction::Right => {
-                    head_x = head_x + 0.75 * game.square_size as f64;
-                    head_y = head_y + 0.25 * game.square_size as f64;},
-                Direction::Left => {
-                    head_x = head_x - 0.25 * game.square_size as f64;
-                    head_y = head_y + 0.25 * game.square_size as f64;},
-                Direction::Up => {
-                    head_x = head_x + 0.25 * game.square_size as f64;
-                    head_y = head_y - 0.25 * game.square_size as f64;},
-                Direction::Down => {
-                    head_x = head_x + 0.25 * game.square_size as f64;
-                    head_y = head_y + 0.75 * game.square_size as f64;},
+                Right => {
+                    head_x = head_x + 0.875 * game.square_size as f64;
+                    head_y = head_y + 0.375 * game.square_size as f64;},
+                Left => {
+                    head_x = head_x - 0.125 * game.square_size as f64;
+                    head_y = head_y + 0.375 * game.square_size as f64;},
+                Up => {
+                    head_x = head_x + 0.375 * game.square_size as f64;
+                    head_y = head_y - 0.125 * game.square_size as f64;},
+                Down => {
+                    head_x = head_x + 0.375 * game.square_size as f64;
+                    head_y = head_y + 0.875 * game.square_size as f64;},
             };
         }
 
         let snake_head = graphics::rectangle::square(
             head_x,
             head_y,
-            0.5 * game.square_size as f64
+            0.25 * game.square_size as f64
         );
 
         let arc: (f64, f64) = match game.snake.dir {
@@ -346,7 +409,7 @@ impl Renderer {
 
         self.gl.draw(arg.viewport(), |c, gl| {
             graphics::circle_arc(
-                game.snake.color.into(), 0.25 * <f64>::from(game.square_size),
+                game.snake.color.into(), 0.125 * <f64>::from(game.square_size),
                 arc.0,
                 arc.1,
                 snake_head,
