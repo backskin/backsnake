@@ -33,8 +33,8 @@ impl From<RGBTColor> for [f32; 4]{
 }
 
 struct Food {
-    pos_x: i16,
-    pos_y: i16,
+    pos_x: i32,
+    pos_y: i32,
     color: RGBTColor,
     state: FoodState,
 }
@@ -49,21 +49,21 @@ struct Snake {
     dir: Direction,
     body: LinkedList<Direction>,
     color: RGBTColor,
-    pos_x: i16,
-    pos_y: i16,
+    pos_x: i32,
+    pos_y: i32,
 }
 
 impl Snake{
 
-    fn new(pos_x: i16, pos_y: i16,) -> Snake {
+    fn new(position: (i32, i32),) -> Snake {
         let direction = Direction::Up;
         println!("size of Direction enum = {} bytes", std::mem::size_of_val(&direction));
 
         Snake {
             dir: Direction::Right,
             color: RGBTColor(1.0, 0.0, 0.0, 1.0),
-            pos_x,
-            pos_y,
+            pos_x: position.0,
+            pos_y: position.1,
             body: Default::default(),
         }
     }
@@ -77,18 +77,18 @@ impl Snake{
 struct Game{
     snake: Snake,
     snacks: Vec<Food>,
-    square_size: i16,
+    square_size: i32,
     background_color: RGBTColor,
     game_paused: bool,
-    field_width: i16,
-    field_height: i16,
+    field_width: i32,
+    field_height: i32,
     level: u8,
 }
 
 impl Game {
-    fn new(sqr_size: i16, field_size: (i16, i16)) -> Game {
+    fn new(sqr_size: i32, field_size: (i32, i32)) -> Game {
         Game {
-            snake: Snake::new(10, 10),
+            snake: Snake::new((10, 10)),
             snacks: Vec::new(),
             square_size: sqr_size,
             background_color: RGBTColor(0.0, 0.9, 0.3, 1.0),
@@ -133,11 +133,10 @@ impl Game {
         self.level += 1;
         for _ in 0..=self.level {
             let mut thread_random_gen = rand::thread_rng();
-            let x = thread_random_gen.gen_range(0, self.field_width);
-            let y = thread_random_gen.gen_range(0, self.field_height);
+            let pos_x = thread_random_gen.gen_range(0, self.field_width);
+            let pos_y = thread_random_gen.gen_range(0, self.field_height);
             let snack = Food {
-                pos_x: x as i16,
-                pos_y: y as i16,
+                pos_x, pos_y,
                 color: RGBTColor(0.17, 0.1, 0.67, 1.0),
                 state: FoodState::Fresh
             };
@@ -152,19 +151,19 @@ impl Game {
         match self.snake.dir {
             Right => {
                 self.snake.pos_x =
-                    (self.snake.pos_x + 1 + self.field_width as i16) % self.field_width as i16
+                    (self.snake.pos_x + 1 + self.field_width) % self.field_width
             },
             Left => {
                 self.snake.pos_x =
-                    (self.snake.pos_x - 1 + self.field_width as i16) % self.field_width as i16
+                    (self.snake.pos_x - 1 + self.field_width) % self.field_width
             },
             Up => {
                 self.snake.pos_y =
-                    (self.snake.pos_y - 1 + self.field_height as i16) % self.field_height as i16
+                    (self.snake.pos_y - 1 + self.field_height) % self.field_height
             },
             Down => {
                 self.snake.pos_y =
-                    (self.snake.pos_y + 1 + self.field_height as i16) % self.field_height as i16
+                    (self.snake.pos_y + 1 + self.field_height) % self.field_height
             },
         }
 
@@ -207,20 +206,19 @@ struct Renderer{
 }
 
 impl Renderer {
-    fn new(win_size: (i32, i32)) -> Renderer {
+    fn new(win_size: (f64, f64)) -> Renderer {
         let gl_version_value = OpenGL::V3_2;
-        let win_size = Size{
-            width: win_size.0 as u32,
-            height: win_size.1 as u32,
-        };
+        let win_size = Size::from(win_size);
 
         Renderer {
-            window: WindowSettings::new(
-                "Snake Game", win_size)
-                .opengl(gl_version_value)
-                .exit_on_esc(true)
-                .build()
-                .unwrap(),
+            window: {
+                let mut wset = WindowSettings::new(
+                    "Snake Game", win_size)
+                    .exit_on_esc(true);
+
+                wset.set_graphics_api(gl_version_value);
+                wset.build().unwrap()
+            },
             gl: GlGraphics::new(gl_version_value),
         }
     }
@@ -232,13 +230,12 @@ impl Renderer {
             |_c, gl| { graphics::clear(<[f32; 4]>::from(game.background_color), gl); }
         );
 
-        let sq_size = game.square_size as i16;
-        let half_size = sq_size / 2;
+        let half_size = game.square_size / 2;
 
         for snack in &game.snacks {
             let snack_circle = graphics::ellipse::circle(
-                (snack.pos_x * sq_size + half_size) as f64,
-                (snack.pos_y * sq_size + half_size) as f64,
+                (snack.pos_x * game.square_size + half_size) as f64,
+                (snack.pos_y * game.square_size + half_size) as f64,
                 0.5 * half_size as f64,
             );
 
@@ -351,12 +348,19 @@ impl Renderer {
                 Direction::Down => {
                     segment_pos_y = (segment_pos_y - 1 + game.field_height) % game.field_height;
                 },
-            };
+            }
 
             if segment_pos_x == game.snake.pos_x && segment_pos_y == game.snake.pos_y {
                 reset_game = true;
                 break;
             }
+        }
+
+        match last_direction {
+            Right => {},
+            Left => {},
+            Up => {},
+            Down => {},
         }
 
         let mut x_start = (game.snake.pos_x * game.square_size) as f64;
@@ -426,17 +430,15 @@ impl Renderer {
 
 fn main() {
 
-    let field_size: (i16, i16) = (20, 20);
-    let sq_sz: i16 = 40;
+    let field_size = (20, 20);
+    let sq_sz = 40;
 
     println!("field size: [{}, {}]", field_size.0, field_size.1);
 
     let mut events = Events::new(EventSettings::new()).ups(8);
 
-    let mut rnr = Renderer::new((
-        (field_size.0 as i32) * sq_sz as i32,
-        (field_size.1 as i32) * sq_sz as i32,
-    ));
+    let mut rnr = Renderer::new(
+        ((field_size.0 * sq_sz) as f64, (field_size.1 * sq_sz) as f64));
 
     let mut game = Game::new(sq_sz, field_size);
 
